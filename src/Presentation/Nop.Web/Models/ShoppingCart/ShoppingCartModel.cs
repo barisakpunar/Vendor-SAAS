@@ -12,6 +12,7 @@ public partial record ShoppingCartModel : BaseNopModel
     public ShoppingCartModel()
     {
         Items = new List<ShoppingCartItemModel>();
+        VendorGroups = new List<VendorGroupModel>();
         Warnings = new List<string>();
         DiscountBox = new DiscountBoxModel();
         GiftCardBox = new GiftCardBoxModel();
@@ -28,6 +29,7 @@ public partial record ShoppingCartModel : BaseNopModel
     public bool IsEditable { get; set; }
     public bool IsReadyToCheckout { get; set; }
     public IList<ShoppingCartItemModel> Items { get; set; }
+    public IList<VendorGroupModel> VendorGroups { get; set; }
 
     public IList<CheckoutAttributeModel> CheckoutAttributes { get; set; }
 
@@ -60,6 +62,7 @@ public partial record ShoppingCartModel : BaseNopModel
         public string Sku { get; set; }
 
         public string VendorName { get; set; }
+        public int VendorId { get; set; }
 
         public PictureModel Picture { get; set; }
 
@@ -93,6 +96,18 @@ public partial record ShoppingCartModel : BaseNopModel
         public bool DisableRemoval { get; set; }
 
         public IList<string> Warnings { get; set; }
+    }
+
+    public partial record VendorGroupModel : BaseNopModel
+    {
+        public VendorGroupModel()
+        {
+            Items = new List<ShoppingCartItemModel>();
+        }
+
+        public int VendorId { get; set; }
+        public string VendorName { get; set; }
+        public IList<ShoppingCartItemModel> Items { get; set; }
     }
 
     public partial record CheckoutAttributeModel : BaseNopEntityModel

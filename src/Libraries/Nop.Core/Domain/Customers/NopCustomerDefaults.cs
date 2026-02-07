@@ -136,6 +136,11 @@ public static partial class NopCustomerDefaults
     public static string CheckoutAttributes => "CheckoutAttributes";
 
     /// <summary>
+    /// Gets a name of generic attribute to store selected shopping cart item identifiers for scoped checkout
+    /// </summary>
+    public static string SelectedCheckoutCartItemIdsAttribute => "SelectedCheckoutCartItemIds";
+
+    /// <summary>
     /// Gets a name of generic attribute to store the value of 'OfferedShippingOptions'
     /// </summary>
     public static string OfferedShippingOptionsAttribute => "OfferedShippingOptions";

@@ -481,6 +481,18 @@ public partial class OrderProcessingService : IOrderProcessingService
 
         //load shopping cart
         details.Cart = await _shoppingCartService.GetShoppingCartAsync(details.Customer, ShoppingCartType.ShoppingCart, processPaymentRequest.StoreId);
+        var selectedCheckoutCartItemIds = await _genericAttributeService.GetAttributeAsync<string>(details.Customer,
+            NopCustomerDefaults.SelectedCheckoutCartItemIdsAttribute, processPaymentRequest.StoreId);
+        if (!string.IsNullOrWhiteSpace(selectedCheckoutCartItemIds))
+        {
+            var selectedIds = selectedCheckoutCartItemIds
+                .Split(',', StringSplitOptions.RemoveEmptyEntries)
+                .Select(idString => int.TryParse(idString, out var id) ? id : 0)
+                .Where(id => id > 0)
+                .ToHashSet();
+            if (selectedIds.Any())
+                details.Cart = details.Cart.Where(item => selectedIds.Contains(item.Id)).ToList();
+        }
 
         if (!details.Cart.Any())
             throw new NopException("Cart is empty");
@@ -1313,7 +1325,8 @@ public partial class OrderProcessingService : IOrderProcessingService
             await _eventPublisher.PublishAsync(new ShoppingCartItemMovedToOrderItemEvent(sc, orderItem));
         }
 
-        await _shoppingCartService.ClearShoppingCartAsync(details.Customer, order.StoreId);
+        foreach (var shoppingCartItem in details.Cart)
+            await _shoppingCartService.DeleteShoppingCartItemAsync(shoppingCartItem, resetCheckoutData: false, ensureOnlyActiveCheckoutAttributes: true);
     }
 
     /// <summary>
@@ -1582,6 +1595,8 @@ public partial class OrderProcessingService : IOrderProcessingService
                     //reset checkout data
                     await _customerService.ResetCheckoutDataAsync(placeOrderContainer.Customer,
                         processPaymentRequest.StoreId, clearCouponCodes: true, clearCheckoutAttributes: true);
+                    await _genericAttributeService.SaveAttributeAsync<string>(placeOrderContainer.Customer,
+                        NopCustomerDefaults.SelectedCheckoutCartItemIdsAttribute, null, processPaymentRequest.StoreId);
                     await _customerActivityService.InsertActivityAsync("PublicStore.PlaceOrder",
                         string.Format(await _localizationService.GetResourceAsync("ActivityLog.PublicStore.PlaceOrder"),
                             order.Id), order);

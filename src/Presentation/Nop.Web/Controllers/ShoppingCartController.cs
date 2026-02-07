@@ -1303,6 +1303,9 @@ public partial class ShoppingCartController : BasePublicController
         var store = await _storeContext.GetCurrentStoreAsync();
         var cart = await _shoppingCartService.GetShoppingCartAsync(customer, ShoppingCartType.ShoppingCart, store.Id);
 
+        await _genericAttributeService.SaveAttributeAsync<string>(customer,
+            NopCustomerDefaults.SelectedCheckoutCartItemIdsAttribute, null, store.Id);
+
         //parse and save checkout attributes
         await ParseAndSaveCheckoutAttributesAsync(cart, form);
 
@@ -1333,6 +1336,63 @@ public partial class ShoppingCartController : BasePublicController
             //verify user identity (it may be facebook login page, or google, or local)
             return Challenge();
         }
+
+        return RedirectToRoute(NopRouteNames.Standard.LOGIN_CHECKOUT_AS_GUEST, new { returnUrl = Url.RouteUrl(NopRouteNames.General.CART) });
+    }
+
+    [HttpPost, ActionName("Cart")]
+    [FormValueRequired("checkoutvendor")]
+    public virtual async Task<IActionResult> StartVendorCheckout(IFormCollection form)
+    {
+        var customer = await _workContext.GetCurrentCustomerAsync();
+        var store = await _storeContext.GetCurrentStoreAsync();
+        var cart = await _shoppingCartService.GetShoppingCartAsync(customer, ShoppingCartType.ShoppingCart, store.Id);
+
+        var checkoutVendorValue = form["checkoutvendor"].FirstOrDefault();
+        if (string.IsNullOrWhiteSpace(checkoutVendorValue))
+            return RedirectToRoute(NopRouteNames.General.CART);
+
+        var selectedItemIds = checkoutVendorValue
+            .Split(',', StringSplitOptions.RemoveEmptyEntries)
+            .Select(idString => int.TryParse(idString, out var id) ? id : 0)
+            .Where(id => id > 0)
+            .ToHashSet();
+        if (!selectedItemIds.Any())
+            return RedirectToRoute(NopRouteNames.General.CART);
+
+        var vendorCart = cart.Where(item => selectedItemIds.Contains(item.Id)).ToList();
+
+        if (!vendorCart.Any())
+            return RedirectToRoute(NopRouteNames.General.CART);
+
+        await ParseAndSaveCheckoutAttributesAsync(vendorCart, form);
+
+        var checkoutAttributes = await _genericAttributeService.GetAttributeAsync<string>(customer,
+            NopCustomerDefaults.CheckoutAttributes, store.Id);
+        var checkoutAttributeWarnings = await _shoppingCartService.GetShoppingCartWarningsAsync(vendorCart, checkoutAttributes, true);
+        if (checkoutAttributeWarnings.Any())
+        {
+            var model = new ShoppingCartModel();
+            model = await _shoppingCartModelFactory.PrepareShoppingCartModelAsync(model, cart, validateCheckoutAttributes: true);
+            return View(model);
+        }
+
+        var selectedIds = string.Join(",", vendorCart.Select(item => item.Id));
+        await _genericAttributeService.SaveAttributeAsync(customer,
+            NopCustomerDefaults.SelectedCheckoutCartItemIdsAttribute, selectedIds, store.Id);
+
+        var anonymousPermissed = _orderSettings.AnonymousCheckoutAllowed
+                                 && _customerSettings.UserRegistrationType == UserRegistrationType.Disabled;
+
+        if (anonymousPermissed || !await _customerService.IsGuestAsync(customer))
+            return RedirectToRoute(NopRouteNames.Standard.CHECKOUT);
+
+        var cartProductIds = vendorCart.Select(ci => ci.ProductId).ToArray();
+        var downloadableProductsRequireRegistration =
+            _customerSettings.RequireRegistrationForDownloadableProducts && await _productService.HasAnyDownloadableProductAsync(cartProductIds);
+
+        if (!_orderSettings.AnonymousCheckoutAllowed || downloadableProductsRequireRegistration)
+            return Challenge();
 
         return RedirectToRoute(NopRouteNames.Standard.LOGIN_CHECKOUT_AS_GUEST, new { returnUrl = Url.RouteUrl(NopRouteNames.General.CART) });
     }

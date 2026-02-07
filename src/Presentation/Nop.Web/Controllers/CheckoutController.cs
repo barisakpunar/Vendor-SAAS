@@ -149,6 +149,29 @@ public partial class CheckoutController : BasePublicController
         return interval.TotalMinutes > _orderSettings.MinimumOrderPlacementInterval;
     }
 
+    protected virtual async Task<IList<ShoppingCartItem>> GetScopedShoppingCartAsync(Customer customer, int storeId)
+    {
+        var cart = await _shoppingCartService.GetShoppingCartAsync(customer, ShoppingCartType.ShoppingCart, storeId);
+
+        var selectedCartItemIds = await _genericAttributeService.GetAttributeAsync<string>(customer,
+            NopCustomerDefaults.SelectedCheckoutCartItemIdsAttribute, storeId);
+        if (string.IsNullOrWhiteSpace(selectedCartItemIds))
+            return cart;
+
+        var selectedIds = new HashSet<int>();
+        foreach (var idString in selectedCartItemIds.Split(',', StringSplitOptions.RemoveEmptyEntries))
+        {
+            if (int.TryParse(idString, out var id))
+                selectedIds.Add(id);
+        }
+
+        if (!selectedIds.Any())
+            return cart;
+
+        var scopedCart = cart.Where(item => selectedIds.Contains(item.Id)).ToList();
+        return scopedCart.Any() ? scopedCart : cart;
+    }
+
     /// <summary>
     /// Parses the value indicating whether the "pickup in store" is allowed
     /// </summary>
@@ -253,7 +276,7 @@ public partial class CheckoutController : BasePublicController
 
             var customer = await _workContext.GetCurrentCustomerAsync();
             var store = await _storeContext.GetCurrentStoreAsync();
-            var cart = await _shoppingCartService.GetShoppingCartAsync(customer, ShoppingCartType.ShoppingCart, store.Id);
+            var cart = await GetScopedShoppingCartAsync(customer, store.Id);
             if (!cart.Any())
                 throw new Exception("Your cart is empty");
 
@@ -288,7 +311,7 @@ public partial class CheckoutController : BasePublicController
         {
             var customer = await _workContext.GetCurrentCustomerAsync();
             var store = await _storeContext.GetCurrentStoreAsync();
-            var cart = await _shoppingCartService.GetShoppingCartAsync(customer, ShoppingCartType.ShoppingCart, store.Id);
+            var cart = await GetScopedShoppingCartAsync(customer, store.Id);
             if (!cart.Any())
                 throw new Exception("Your cart is empty");
 
@@ -321,7 +344,7 @@ public partial class CheckoutController : BasePublicController
 
         var customer = await _workContext.GetCurrentCustomerAsync();
         var store = await _storeContext.GetCurrentStoreAsync();
-        var cart = await _shoppingCartService.GetShoppingCartAsync(customer, ShoppingCartType.ShoppingCart, store.Id);
+        var cart = await GetScopedShoppingCartAsync(customer, store.Id);
 
         if (!cart.Any())
             return RedirectToRoute(NopRouteNames.General.CART);
@@ -585,7 +608,7 @@ public partial class CheckoutController : BasePublicController
 
         var customer = await _workContext.GetCurrentCustomerAsync();
         var store = await _storeContext.GetCurrentStoreAsync();
-        var cart = await _shoppingCartService.GetShoppingCartAsync(customer, ShoppingCartType.ShoppingCart, store.Id);
+        var cart = await GetScopedShoppingCartAsync(customer, store.Id);
 
         if (!cart.Any())
             return RedirectToRoute(NopRouteNames.General.CART);
@@ -633,7 +656,7 @@ public partial class CheckoutController : BasePublicController
         await _customerService.UpdateCustomerAsync(customer);
 
         var store = await _storeContext.GetCurrentStoreAsync();
-        var cart = await _shoppingCartService.GetShoppingCartAsync(customer, ShoppingCartType.ShoppingCart, store.Id);
+        var cart = await GetScopedShoppingCartAsync(customer, store.Id);
 
         //ship to the same address?
         //by default Shipping is available if the country is not specified
@@ -662,7 +685,7 @@ public partial class CheckoutController : BasePublicController
 
         var customer = await _workContext.GetCurrentCustomerAsync();
         var store = await _storeContext.GetCurrentStoreAsync();
-        var cart = await _shoppingCartService.GetShoppingCartAsync(customer, ShoppingCartType.ShoppingCart, store.Id);
+        var cart = await GetScopedShoppingCartAsync(customer, store.Id);
 
         if (!cart.Any())
             return RedirectToRoute(NopRouteNames.General.CART);
@@ -755,7 +778,7 @@ public partial class CheckoutController : BasePublicController
 
         var customer = await _workContext.GetCurrentCustomerAsync();
         var store = await _storeContext.GetCurrentStoreAsync();
-        var cart = await _shoppingCartService.GetShoppingCartAsync(customer, ShoppingCartType.ShoppingCart, store.Id);
+        var cart = await GetScopedShoppingCartAsync(customer, store.Id);
 
         if (!cart.Any())
             return RedirectToRoute(NopRouteNames.General.CART);
@@ -811,7 +834,7 @@ public partial class CheckoutController : BasePublicController
 
         var customer = await _workContext.GetCurrentCustomerAsync();
         var store = await _storeContext.GetCurrentStoreAsync();
-        var cart = await _shoppingCartService.GetShoppingCartAsync(customer, ShoppingCartType.ShoppingCart, store.Id);
+        var cart = await GetScopedShoppingCartAsync(customer, store.Id);
 
         if (!cart.Any())
             return RedirectToRoute(NopRouteNames.General.CART);
@@ -899,7 +922,7 @@ public partial class CheckoutController : BasePublicController
 
         var customer = await _workContext.GetCurrentCustomerAsync();
         var store = await _storeContext.GetCurrentStoreAsync();
-        var cart = await _shoppingCartService.GetShoppingCartAsync(customer, ShoppingCartType.ShoppingCart, store.Id);
+        var cart = await GetScopedShoppingCartAsync(customer, store.Id);
 
         if (!cart.Any())
             return RedirectToRoute(NopRouteNames.General.CART);
@@ -953,7 +976,7 @@ public partial class CheckoutController : BasePublicController
 
         var customer = await _workContext.GetCurrentCustomerAsync();
         var store = await _storeContext.GetCurrentStoreAsync();
-        var cart = await _shoppingCartService.GetShoppingCartAsync(customer, ShoppingCartType.ShoppingCart, store.Id);
+        var cart = await GetScopedShoppingCartAsync(customer, store.Id);
 
         if (!cart.Any())
             return RedirectToRoute(NopRouteNames.General.CART);
@@ -1032,7 +1055,7 @@ public partial class CheckoutController : BasePublicController
 
         var customer = await _workContext.GetCurrentCustomerAsync();
         var store = await _storeContext.GetCurrentStoreAsync();
-        var cart = await _shoppingCartService.GetShoppingCartAsync(customer, ShoppingCartType.ShoppingCart, store.Id);
+        var cart = await GetScopedShoppingCartAsync(customer, store.Id);
 
         if (!cart.Any())
             return RedirectToRoute(NopRouteNames.General.CART);
@@ -1089,7 +1112,7 @@ public partial class CheckoutController : BasePublicController
 
         var customer = await _workContext.GetCurrentCustomerAsync();
         var store = await _storeContext.GetCurrentStoreAsync();
-        var cart = await _shoppingCartService.GetShoppingCartAsync(customer, ShoppingCartType.ShoppingCart, store.Id);
+        var cart = await GetScopedShoppingCartAsync(customer, store.Id);
 
         if (!cart.Any())
             return RedirectToRoute(NopRouteNames.General.CART);
@@ -1138,7 +1161,7 @@ public partial class CheckoutController : BasePublicController
 
         var customer = await _workContext.GetCurrentCustomerAsync();
         var store = await _storeContext.GetCurrentStoreAsync();
-        var cart = await _shoppingCartService.GetShoppingCartAsync(customer, ShoppingCartType.ShoppingCart, store.Id);
+        var cart = await GetScopedShoppingCartAsync(customer, store.Id);
 
         if (!cart.Any())
             return RedirectToRoute(NopRouteNames.General.CART);
@@ -1189,7 +1212,7 @@ public partial class CheckoutController : BasePublicController
 
         var customer = await _workContext.GetCurrentCustomerAsync();
         var store = await _storeContext.GetCurrentStoreAsync();
-        var cart = await _shoppingCartService.GetShoppingCartAsync(customer, ShoppingCartType.ShoppingCart, store.Id);
+        var cart = await GetScopedShoppingCartAsync(customer, store.Id);
 
         if (!cart.Any())
             return RedirectToRoute(NopRouteNames.General.CART);
@@ -1238,7 +1261,7 @@ public partial class CheckoutController : BasePublicController
 
         var customer = await _workContext.GetCurrentCustomerAsync();
         var store = await _storeContext.GetCurrentStoreAsync();
-        var cart = await _shoppingCartService.GetShoppingCartAsync(customer, ShoppingCartType.ShoppingCart, store.Id);
+        var cart = await GetScopedShoppingCartAsync(customer, store.Id);
 
         if (!cart.Any())
             return RedirectToRoute(NopRouteNames.General.CART);
@@ -1264,7 +1287,7 @@ public partial class CheckoutController : BasePublicController
 
         var customer = await _workContext.GetCurrentCustomerAsync();
         var store = await _storeContext.GetCurrentStoreAsync();
-        var cart = await _shoppingCartService.GetShoppingCartAsync(customer, ShoppingCartType.ShoppingCart, store.Id);
+        var cart = await GetScopedShoppingCartAsync(customer, store.Id);
 
         if (!cart.Any())
             return RedirectToRoute(NopRouteNames.General.CART);
@@ -1483,7 +1506,7 @@ public partial class CheckoutController : BasePublicController
 
         var customer = await _workContext.GetCurrentCustomerAsync();
         var store = await _storeContext.GetCurrentStoreAsync();
-        var cart = await _shoppingCartService.GetShoppingCartAsync(customer, ShoppingCartType.ShoppingCart, store.Id);
+        var cart = await GetScopedShoppingCartAsync(customer, store.Id);
 
         if (!cart.Any())
             return RedirectToRoute(NopRouteNames.General.CART);
@@ -1509,7 +1532,7 @@ public partial class CheckoutController : BasePublicController
 
             var customer = await _workContext.GetCurrentCustomerAsync();
             var store = await _storeContext.GetCurrentStoreAsync();
-            var cart = await _shoppingCartService.GetShoppingCartAsync(customer, ShoppingCartType.ShoppingCart, store.Id);
+            var cart = await GetScopedShoppingCartAsync(customer, store.Id);
 
             if (!cart.Any())
                 throw new Exception("Your cart is empty");
@@ -1665,7 +1688,7 @@ public partial class CheckoutController : BasePublicController
 
             var customer = await _workContext.GetCurrentCustomerAsync();
             var store = await _storeContext.GetCurrentStoreAsync();
-            var cart = await _shoppingCartService.GetShoppingCartAsync(customer, ShoppingCartType.ShoppingCart, store.Id);
+            var cart = await GetScopedShoppingCartAsync(customer, store.Id);
 
             if (!cart.Any())
                 throw new Exception("Your cart is empty");
@@ -1786,7 +1809,7 @@ public partial class CheckoutController : BasePublicController
 
             var customer = await _workContext.GetCurrentCustomerAsync();
             var store = await _storeContext.GetCurrentStoreAsync();
-            var cart = await _shoppingCartService.GetShoppingCartAsync(customer, ShoppingCartType.ShoppingCart, store.Id);
+            var cart = await GetScopedShoppingCartAsync(customer, store.Id);
 
             if (!cart.Any())
                 throw new Exception("Your cart is empty");
@@ -1869,7 +1892,7 @@ public partial class CheckoutController : BasePublicController
 
             var customer = await _workContext.GetCurrentCustomerAsync();
             var store = await _storeContext.GetCurrentStoreAsync();
-            var cart = await _shoppingCartService.GetShoppingCartAsync(customer, ShoppingCartType.ShoppingCart, store.Id);
+            var cart = await GetScopedShoppingCartAsync(customer, store.Id);
 
             if (!cart.Any())
                 throw new Exception("Your cart is empty");
@@ -1942,7 +1965,7 @@ public partial class CheckoutController : BasePublicController
 
             var customer = await _workContext.GetCurrentCustomerAsync();
             var store = await _storeContext.GetCurrentStoreAsync();
-            var cart = await _shoppingCartService.GetShoppingCartAsync(customer, ShoppingCartType.ShoppingCart, store.Id);
+            var cart = await GetScopedShoppingCartAsync(customer, store.Id);
 
             if (!cart.Any())
                 throw new Exception("Your cart is empty");
@@ -2020,7 +2043,7 @@ public partial class CheckoutController : BasePublicController
                     throw new Exception(await _localizationService.GetResourceAsync("Checkout.Disabled"));
 
                 var store = await _storeContext.GetCurrentStoreAsync();
-                var cart = await _shoppingCartService.GetShoppingCartAsync(customer, ShoppingCartType.ShoppingCart, store.Id);
+                var cart = await GetScopedShoppingCartAsync(customer, store.Id);
 
                 if (!cart.Any())
                     throw new Exception("Your cart is empty");

@@ -379,12 +379,14 @@ public partial class ShoppingCartModelFactory : IShoppingCartModelFactory
         ArgumentNullException.ThrowIfNull(sci);
 
         var product = await _productService.GetProductByIdAsync(sci.ProductId);
+        var vendor = await _vendorService.GetVendorByProductIdAsync(product.Id);
 
         var cartItemModel = new ShoppingCartModel.ShoppingCartItemModel
         {
             Id = sci.Id,
             Sku = await _productService.FormatSkuAsync(product, sci.AttributesXml),
-            VendorName = _vendorSettings.ShowVendorOnOrderDetailsPage ? (await _vendorService.GetVendorByProductIdAsync(product.Id))?.Name : string.Empty,
+            VendorName = vendor?.Name ?? string.Empty,
+            VendorId = product.VendorId,
             ProductId = sci.ProductId,
             ProductName = await _localizationService.GetLocalizedAsync(product, x => x.Name),
             ProductSeName = await _urlRecordService.GetSeNameAsync(product),
@@ -924,6 +926,18 @@ public partial class ShoppingCartModelFactory : IShoppingCartModelFactory
             var cartItemModel = await PrepareShoppingCartItemModelAsync(cart, sci);
             model.Items.Add(cartItemModel);
         }
+
+        model.VendorGroups = model.Items
+            .GroupBy(item => new { item.VendorId, item.VendorName })
+            .Select(group => new ShoppingCartModel.VendorGroupModel
+            {
+                VendorId = group.Key.VendorId,
+                VendorName = group.Key.VendorName,
+                Items = group.ToList()
+            })
+            .OrderBy(group => group.VendorName)
+            .ThenBy(group => group.VendorId)
+            .ToList();
 
         //payment methods
         //all payment methods (do not filter by country here as it could be not specified yet)
