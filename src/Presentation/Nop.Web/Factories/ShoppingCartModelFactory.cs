@@ -927,17 +927,49 @@ public partial class ShoppingCartModelFactory : IShoppingCartModelFactory
             model.Items.Add(cartItemModel);
         }
 
-        model.VendorGroups = model.Items
+        var currentCurrency = await _workContext.GetWorkingCurrencyAsync();
+        var currentLanguage = await _workContext.GetWorkingLanguageAsync();
+        var subTotalIncludingTax = await _workContext.GetTaxDisplayTypeAsync() == TaxDisplayType.IncludingTax &&
+                                   !_taxSettings.ForceTaxExclusionFromOrderSubtotal;
+
+        var cartItemsById = cart.ToDictionary(item => item.Id);
+        var groupedItems = model.Items
             .GroupBy(item => new { item.VendorId, item.VendorName })
-            .Select(group => new ShoppingCartModel.VendorGroupModel
+            .OrderBy(group => group.Key.VendorName)
+            .ThenBy(group => group.Key.VendorId)
+            .ToList();
+
+        model.VendorGroups = new List<ShoppingCartModel.VendorGroupModel>();
+        foreach (var group in groupedItems)
+        {
+            var vendorCart = group
+                .Select(item => cartItemsById[item.Id])
+                .ToList();
+            var (discountAmountBase, _, subTotalWithoutDiscountBase, subTotalWithDiscountBase, _) =
+                await _orderTotalCalculationService.GetShoppingCartSubTotalAsync(vendorCart, subTotalIncludingTax, includeGlobalDiscounts: false);
+
+            var subTotal = await _currencyService.ConvertFromPrimaryStoreCurrencyAsync(subTotalWithoutDiscountBase, currentCurrency);
+            var subTotalWithDiscount = await _currencyService.ConvertFromPrimaryStoreCurrencyAsync(subTotalWithDiscountBase, currentCurrency);
+            var discountAmount = await _currencyService.ConvertFromPrimaryStoreCurrencyAsync(discountAmountBase, currentCurrency);
+
+            var vendorGroupModel = new ShoppingCartModel.VendorGroupModel
             {
                 VendorId = group.Key.VendorId,
                 VendorName = group.Key.VendorName,
-                Items = group.ToList()
-            })
-            .OrderBy(group => group.VendorName)
-            .ThenBy(group => group.VendorId)
-            .ToList();
+                Items = group.ToList(),
+                SubTotal = await _priceFormatter.FormatPriceAsync(subTotal, true, currentCurrency, currentLanguage.Id, subTotalIncludingTax)
+            };
+
+            if (discountAmountBase > decimal.Zero)
+            {
+                vendorGroupModel.SubTotalDiscount =
+                    await _priceFormatter.FormatPriceAsync(-discountAmount, true, currentCurrency, currentLanguage.Id, subTotalIncludingTax);
+                vendorGroupModel.SubTotalWithDiscount =
+                    await _priceFormatter.FormatPriceAsync(subTotalWithDiscount, true, currentCurrency, currentLanguage.Id, subTotalIncludingTax);
+            }
+
+            model.VendorGroups.Add(vendorGroupModel);
+        }
 
         //payment methods
         //all payment methods (do not filter by country here as it could be not specified yet)

@@ -108,6 +108,9 @@ public partial record ShoppingCartModel : BaseNopModel
         public int VendorId { get; set; }
         public string VendorName { get; set; }
         public IList<ShoppingCartItemModel> Items { get; set; }
+        public string SubTotal { get; set; }
+        public string SubTotalDiscount { get; set; }
+        public string SubTotalWithDiscount { get; set; }
     }
 
     public partial record CheckoutAttributeModel : BaseNopEntityModel

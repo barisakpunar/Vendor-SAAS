@@ -103,23 +103,57 @@ public partial class OrderTotalCalculationService : IOrderTotalCalculationServic
 
     #region Utilities
 
+    protected virtual async Task<int?> GetSingleVendorIdAsync(IList<ShoppingCartItem> cart)
+    {
+        if (cart == null || !cart.Any())
+            return null;
+
+        var productIds = cart.Select(item => item.ProductId).Distinct().ToArray();
+        var products = await _productService.GetProductsByIdsAsync(productIds);
+        var vendorIds = products.Select(product => product.VendorId).Distinct().ToList();
+        return vendorIds.Count == 1 ? vendorIds[0] : null;
+    }
+
+    protected virtual IList<Discount> FilterDiscountsByVendor(IList<Discount> discounts, int? vendorId, bool includeGlobalDiscounts = true)
+    {
+        if (discounts == null || discounts.Count == 0)
+            return new List<Discount>();
+
+        if (vendorId.HasValue && vendorId.Value > 0)
+        {
+            if (includeGlobalDiscounts)
+            {
+                return discounts.Where(discount => !discount.VendorId.HasValue || discount.VendorId.Value == vendorId.Value)
+                    .ToList();
+            }
+
+            return discounts.Where(discount => discount.VendorId.HasValue && discount.VendorId.Value == vendorId.Value)
+                .ToList();
+        }
+
+        return includeGlobalDiscounts
+            ? discounts.Where(discount => !discount.VendorId.HasValue).ToList()
+            : new List<Discount>();
+    }
+
     /// <summary>
     /// Gets an order discount (applied to order subtotal)
     /// </summary>
     /// <param name="customer">Customer</param>
     /// <param name="orderSubTotal">Order subtotal</param>
+    /// <param name="vendorId">Vendor identifier; null to apply only global discounts, value to include vendor-specific discounts</param>
     /// <returns>
     /// A task that represents the asynchronous operation
     /// The task result contains the order discount, Applied discounts
     /// </returns>
     protected virtual async Task<(decimal orderDiscount, List<Discount> appliedDiscounts)> GetOrderSubtotalDiscountAsync(Customer customer,
-        decimal orderSubTotal)
+        decimal orderSubTotal, int? vendorId = null, bool includeGlobalDiscounts = true)
     {
         var discountAmount = decimal.Zero;
         if (_catalogSettings.IgnoreDiscounts)
             return (discountAmount, new List<Discount>());
 
-        var allDiscounts = await _discountService.GetAllDiscountsAsync(DiscountType.AssignedToOrderSubTotal);
+        var allDiscounts = FilterDiscountsByVendor(await _discountService.GetAllDiscountsAsync(DiscountType.AssignedToOrderSubTotal), vendorId, includeGlobalDiscounts);
         var allowedDiscounts = new List<Discount>();
         if (allDiscounts?.Any() == true)
         {
@@ -151,14 +185,15 @@ public partial class OrderTotalCalculationService : IOrderTotalCalculationServic
     /// A task that represents the asynchronous operation
     /// The task result contains the shipping discount. Applied discounts
     /// </returns>
-    protected virtual async Task<(decimal shippingDiscount, List<Discount> appliedDiscounts)> GetShippingDiscountAsync(Customer customer, decimal shippingTotal)
+    protected virtual async Task<(decimal shippingDiscount, List<Discount> appliedDiscounts)> GetShippingDiscountAsync(Customer customer,
+        decimal shippingTotal, int? vendorId = null, bool includeGlobalDiscounts = true)
     {
         var appliedDiscounts = new List<Discount>();
         var shippingDiscountAmount = decimal.Zero;
         if (_catalogSettings.IgnoreDiscounts)
             return (shippingDiscountAmount, appliedDiscounts);
 
-        var allDiscounts = await _discountService.GetAllDiscountsAsync(DiscountType.AssignedToShipping);
+        var allDiscounts = FilterDiscountsByVendor(await _discountService.GetAllDiscountsAsync(DiscountType.AssignedToShipping), vendorId, includeGlobalDiscounts);
         var allowedDiscounts = new List<Discount>();
         if (allDiscounts?.Any() == true)
         {
@@ -190,13 +225,14 @@ public partial class OrderTotalCalculationService : IOrderTotalCalculationServic
     /// A task that represents the asynchronous operation
     /// The task result contains the order discount. Applied discounts
     /// </returns>
-    protected virtual async Task<(decimal orderDiscount, List<Discount> appliedDiscounts)> GetOrderTotalDiscountAsync(Customer customer, decimal orderTotal)
+    protected virtual async Task<(decimal orderDiscount, List<Discount> appliedDiscounts)> GetOrderTotalDiscountAsync(Customer customer,
+        decimal orderTotal, int? vendorId = null, bool includeGlobalDiscounts = true)
     {
         var discountAmount = decimal.Zero;
         if (_catalogSettings.IgnoreDiscounts)
             return (discountAmount, new List<Discount>());
 
-        var allDiscounts = await _discountService.GetAllDiscountsAsync(DiscountType.AssignedToOrderTotal);
+        var allDiscounts = FilterDiscountsByVendor(await _discountService.GetAllDiscountsAsync(DiscountType.AssignedToOrderTotal), vendorId, includeGlobalDiscounts);
         var allowedDiscounts = new List<Discount>();
         if (allDiscounts?.Any() == true)
         {
@@ -232,7 +268,7 @@ public partial class OrderTotalCalculationService : IOrderTotalCalculationServic
     /// <param name="taxTotal">Tax</param>
     /// <returns>A task that represents the asynchronous operation</returns>
     protected virtual async Task UpdateTotalAsync(UpdateOrderParameters updateOrderParameters, decimal subTotalExclTax,
-        decimal discountAmountExclTax, decimal shippingTotalExclTax, decimal taxTotal)
+        decimal discountAmountExclTax, decimal shippingTotalExclTax, decimal taxTotal, int? vendorId = null)
     {
         var updatedOrder = updateOrderParameters.UpdatedOrder;
         var customer = await _customerService.GetCustomerByIdAsync(updatedOrder.CustomerId);
@@ -240,7 +276,7 @@ public partial class OrderTotalCalculationService : IOrderTotalCalculationServic
         var total = subTotalExclTax - discountAmountExclTax + shippingTotalExclTax + updatedOrder.PaymentMethodAdditionalFeeExclTax + taxTotal;
 
         //get discounts for the order total
-        var (discountAmountTotal, orderAppliedDiscounts) = await GetOrderTotalDiscountAsync(customer, total);
+        var (discountAmountTotal, orderAppliedDiscounts) = await GetOrderTotalDiscountAsync(customer, total, vendorId);
         if (total < discountAmountTotal)
             discountAmountTotal = total;
         total -= discountAmountTotal;
@@ -518,7 +554,8 @@ public partial class OrderTotalCalculationService : IOrderTotalCalculationServic
                 shippingTotal += await GetShoppingCartAdditionalShippingChargeAsync(restoredCart);
 
                 //shipping discounts
-                var (shippingDiscount, shippingTotalDiscounts) = await GetShippingDiscountAsync(customer, shippingTotal);
+                var cartVendorId = await GetSingleVendorIdAsync(restoredCart);
+                var (shippingDiscount, shippingTotalDiscounts) = await GetShippingDiscountAsync(customer, shippingTotal, cartVendorId);
                 shippingTotal -= shippingDiscount;
                 if (shippingTotal < decimal.Zero)
                     shippingTotal = decimal.Zero;
@@ -625,7 +662,8 @@ public partial class OrderTotalCalculationService : IOrderTotalCalculationServic
         //We calculate discount amount on order subtotal excl tax (discount first)
         //calculate discount amount ('Applied to order subtotal' discount)
         var customer = await _customerService.GetCustomerByIdAsync(updatedOrder.CustomerId);
-        var (discountAmountExclTax, subTotalDiscounts) = await GetOrderSubtotalDiscountAsync(customer, subTotalExclTax);
+        var cartVendorId = await GetSingleVendorIdAsync(restoredCart);
+        var (discountAmountExclTax, subTotalDiscounts) = await GetOrderSubtotalDiscountAsync(customer, subTotalExclTax, cartVendorId);
         if (subTotalExclTax < discountAmountExclTax)
             discountAmountExclTax = subTotalExclTax;
         var discountAmountInclTax = discountAmountExclTax;
@@ -804,7 +842,14 @@ public partial class OrderTotalCalculationService : IOrderTotalCalculationServic
     public virtual async Task<(decimal discountAmount, List<Discount> appliedDiscounts, decimal subTotalWithoutDiscount, decimal subTotalWithDiscount, SortedDictionary<decimal, decimal> taxRates)> GetShoppingCartSubTotalAsync(IList<ShoppingCartItem> cart,
         bool includingTax)
     {
-        var (discountAmountInclTax, discountAmountExclTax, appliedDiscounts, subTotalWithoutDiscountInclTax, subTotalWithoutDiscountExclTax, subTotalWithDiscountInclTax, subTotalWithDiscountExclTax, taxRates) = await GetShoppingCartSubTotalsAsync(cart);
+        return await GetShoppingCartSubTotalAsync(cart, includingTax, includeGlobalDiscounts: true);
+    }
+
+    public virtual async Task<(decimal discountAmount, List<Discount> appliedDiscounts, decimal subTotalWithoutDiscount, decimal subTotalWithDiscount, SortedDictionary<decimal, decimal> taxRates)> GetShoppingCartSubTotalAsync(IList<ShoppingCartItem> cart,
+        bool includingTax, bool includeGlobalDiscounts)
+    {
+        var (discountAmountInclTax, discountAmountExclTax, appliedDiscounts, subTotalWithoutDiscountInclTax, subTotalWithoutDiscountExclTax, subTotalWithDiscountInclTax, subTotalWithDiscountExclTax, taxRates) =
+            await GetShoppingCartSubTotalsAsync(cart, includeGlobalDiscounts);
 
         return (includingTax ? discountAmountInclTax : discountAmountExclTax, appliedDiscounts,
             includingTax ? subTotalWithoutDiscountInclTax : subTotalWithoutDiscountExclTax,
@@ -823,6 +868,14 @@ public partial class OrderTotalCalculationService : IOrderTotalCalculationServic
         appliedDiscounts, decimal subTotalWithoutDiscountInclTax, decimal subTotalWithoutDiscountExclTax, decimal
         subTotalWithDiscountInclTax, decimal subTotalWithDiscountExclTax, SortedDictionary<decimal, decimal>
         taxRates)> GetShoppingCartSubTotalsAsync(IList<ShoppingCartItem> cart)
+    {
+        return await GetShoppingCartSubTotalsAsync(cart, includeGlobalDiscounts: true);
+    }
+
+    public virtual async Task<(decimal discountAmountInclTax, decimal discountAmountExclTax, List<Discount>
+        appliedDiscounts, decimal subTotalWithoutDiscountInclTax, decimal subTotalWithoutDiscountExclTax, decimal
+        subTotalWithDiscountInclTax, decimal subTotalWithDiscountExclTax, SortedDictionary<decimal, decimal>
+        taxRates)> GetShoppingCartSubTotalsAsync(IList<ShoppingCartItem> cart, bool includeGlobalDiscounts)
     {
         var discountAmountExclTax = decimal.Zero;
         var discountAmountInclTax = decimal.Zero;
@@ -908,9 +961,11 @@ public partial class OrderTotalCalculationService : IOrderTotalCalculationServic
             subTotalWithoutDiscountExclTax = await _priceCalculationService.RoundPriceAsync(subTotalWithoutDiscountExclTax);
         }
 
+        var cartVendorId = await GetSingleVendorIdAsync(cart);
+
         //We calculate discount amount on order subtotal excl tax (discount first)
         //calculate discount amount ('Applied to order subtotal' discount)
-        (discountAmountExclTax, appliedDiscounts) = await GetOrderSubtotalDiscountAsync(customer, subTotalWithoutDiscountExclTax);
+        (discountAmountExclTax, appliedDiscounts) = await GetOrderSubtotalDiscountAsync(customer, subTotalWithoutDiscountExclTax, cartVendorId, includeGlobalDiscounts);
         if (subTotalWithoutDiscountExclTax < discountAmountExclTax)
             discountAmountExclTax = subTotalWithoutDiscountExclTax;
         discountAmountInclTax = discountAmountExclTax;
@@ -983,7 +1038,8 @@ public partial class OrderTotalCalculationService : IOrderTotalCalculationServic
         var taxTotal = await UpdateTaxRatesAsync(subTotalTaxRates, shippingTotalInclTax, shippingTotalExclTax, shippingTaxRate, updateOrderParameters.UpdatedOrder);
 
         //total
-        await UpdateTotalAsync(updateOrderParameters, subTotalExclTax, discountAmountExclTax, shippingTotalExclTax, taxTotal);
+        var cartVendorId = await GetSingleVendorIdAsync(restoredCart);
+        await UpdateTotalAsync(updateOrderParameters, subTotalExclTax, discountAmountExclTax, shippingTotalExclTax, taxTotal, cartVendorId);
     }
 
     /// <summary>
@@ -1049,6 +1105,7 @@ public partial class OrderTotalCalculationService : IOrderTotalCalculationServic
             NopCustomerDefaults.SelectedPickupPointAttribute, store.Id);
 
         var adjustedRate = shippingRate;
+        var cartVendorId = await GetSingleVendorIdAsync(cart);
 
         if (!(applyToPickupInStore && _shippingSettings.AllowPickupInStore && pickupPoint != null && _shippingSettings.IgnoreAdditionalShippingChargeForPickupInStore))
         {
@@ -1056,7 +1113,7 @@ public partial class OrderTotalCalculationService : IOrderTotalCalculationServic
         }
 
         //discount
-        var (discountAmount, appliedDiscounts) = await GetShippingDiscountAsync(customer, adjustedRate);
+        var (discountAmount, appliedDiscounts) = await GetShippingDiscountAsync(customer, adjustedRate, cartVendorId);
         adjustedRate -= discountAmount;
 
         adjustedRate = Math.Max(adjustedRate, decimal.Zero);
@@ -1361,8 +1418,10 @@ public partial class OrderTotalCalculationService : IOrderTotalCalculationServic
         if (_shoppingCartSettings.RoundPricesDuringCalculation)
             resultTemp = await _priceCalculationService.RoundPriceAsync(resultTemp);
 
+        var cartVendorId = await GetSingleVendorIdAsync(cart);
+
         //order total discount
-        var (discountAmount, appliedDiscounts) = await GetOrderTotalDiscountAsync(customer, resultTemp);
+        var (discountAmount, appliedDiscounts) = await GetOrderTotalDiscountAsync(customer, resultTemp, cartVendorId);
 
         //sub totals with discount        
         if (resultTemp < discountAmount)

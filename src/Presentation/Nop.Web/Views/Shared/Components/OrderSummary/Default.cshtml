@@ -29,18 +29,7 @@
         }
         @*we add enctype = "multipart/form-data" because "File upload" attribute control type requires it*@
         <form asp-route="@NopRouteNames.General.CART" method="post" enctype="multipart/form-data" id="shopping-cart-form">
-            @{
-                var vendorGroups = Model.Items
-                    .GroupBy(item => item.VendorName ?? string.Empty)
-                    .Select(group => new
-                    {
-                        VendorName = group.Key,
-                        ItemIds = string.Join(",", group.Select(item => item.Id)),
-                        Items = group.ToList()
-                    })
-                    .ToList();
-            }
-            @foreach (var vendorGroup in vendorGroups)
+            @foreach (var vendorGroup in Model.VendorGroups)
             {
                 <div class="table-wrapper">
                     @if (Model.IsEditable || !string.IsNullOrEmpty(vendorGroup.VendorName))
@@ -49,7 +38,7 @@
                             <strong>@(string.IsNullOrEmpty(vendorGroup.VendorName) ? T("ShoppingCart.Product(s)").Text : vendorGroup.VendorName)</strong>
                             @if (Model.IsEditable)
                             {
-                                <button type="submit" name="checkoutvendor" value="@vendorGroup.ItemIds" class="button-1 checkout-vendor-button">
+                                <button type="submit" name="checkoutvendor" value="@string.Join(",", vendorGroup.Items.Select(item => item.Id))" class="button-1 checkout-vendor-button">
                                     @T("Checkout.Button")
                                 </button>
                             }
@@ -279,6 +268,29 @@
                             }
                         </tbody>
                     </table>
+                    @if (!string.IsNullOrEmpty(vendorGroup.SubTotal))
+                    {
+                        <div class="vendor-group-totals">
+                            <div class="vendor-subtotal">
+                                <span class="label">@T("ShoppingCart.Totals.SubTotal"):</span>
+                                <span class="value">@vendorGroup.SubTotal</span>
+                            </div>
+                            @if (!string.IsNullOrEmpty(vendorGroup.SubTotalDiscount))
+                            {
+                                <div class="vendor-subtotal-discount">
+                                    <span class="label">@T("ShoppingCart.Totals.SubTotalDiscount"):</span>
+                                    <span class="value">@vendorGroup.SubTotalDiscount</span>
+                                </div>
+                                @if (!string.IsNullOrEmpty(vendorGroup.SubTotalWithDiscount))
+                                {
+                                    <div class="vendor-subtotal-total">
+                                        <span class="label">@T("ShoppingCart.Totals.OrderTotal"):</span>
+                                        <span class="value"><strong>@vendorGroup.SubTotalWithDiscount</strong></span>
+                                    </div>
+                                }
+                            }
+                        </div>
+                    }
                 </div>
             }
             @if (Model.IsEditable && Model.Items.Count > 0 && Model.DisplayTaxShippingInfo)

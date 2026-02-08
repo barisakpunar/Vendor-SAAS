@@ -25,11 +25,35 @@ public partial interface IOrderTotalCalculationService
     /// Gets shopping cart subtotal
     /// </summary>
     /// <param name="cart">Cart</param>
+    /// <param name="includingTax">A value indicating whether calculated price should include tax</param>
+    /// <param name="includeGlobalDiscounts">A value indicating whether global discounts should be included</param>
+    /// <returns>
+    /// A task that represents the asynchronous operation
+    /// The task result contains the applied discount amount. Applied discounts. Sub total (without discount). Sub total (with discount). Tax rates (of order sub total)
+    /// </returns>
+    Task<(decimal discountAmount, List<Discount> appliedDiscounts, decimal subTotalWithoutDiscount, decimal subTotalWithDiscount, SortedDictionary<decimal, decimal> taxRates)> GetShoppingCartSubTotalAsync(IList<ShoppingCartItem> cart,
+        bool includingTax, bool includeGlobalDiscounts);
+
+    /// <summary>
+    /// Gets shopping cart subtotal
+    /// </summary>
+    /// <param name="cart">Cart</param>
     /// <returns>
     /// A task that represents the asynchronous operation
     /// The task result contains the applied discount amount. Applied discounts. Sub total (without discount). Sub total (with discount). Tax rates (of order sub total)
     /// </returns>
     Task<(decimal discountAmountInclTax, decimal discountAmountExclTax, List<Discount> appliedDiscounts, decimal subTotalWithoutDiscountInclTax, decimal subTotalWithoutDiscountExclTax, decimal subTotalWithDiscountInclTax, decimal subTotalWithDiscountExclTax, SortedDictionary<decimal, decimal> taxRates)> GetShoppingCartSubTotalsAsync(IList<ShoppingCartItem> cart);
+
+    /// <summary>
+    /// Gets shopping cart subtotal
+    /// </summary>
+    /// <param name="cart">Cart</param>
+    /// <param name="includeGlobalDiscounts">A value indicating whether global discounts should be included</param>
+    /// <returns>
+    /// A task that represents the asynchronous operation
+    /// The task result contains the applied discount amount. Applied discounts. Sub total (without discount). Sub total (with discount). Tax rates (of order sub total)
+    /// </returns>
+    Task<(decimal discountAmountInclTax, decimal discountAmountExclTax, List<Discount> appliedDiscounts, decimal subTotalWithoutDiscountInclTax, decimal subTotalWithoutDiscountExclTax, decimal subTotalWithDiscountInclTax, decimal subTotalWithDiscountExclTax, SortedDictionary<decimal, decimal> taxRates)> GetShoppingCartSubTotalsAsync(IList<ShoppingCartItem> cart, bool includeGlobalDiscounts);
 
     /// <summary>
     /// Adjust shipping rate (free shipping, additional charges, discounts)
